@@ -6,21 +6,34 @@ import { useParams } from "react-router-dom"; // Import for extracting URL param
 const VoiceInterface = () => {
 
   console.log("🚀 VoiceInterface component loaded");
-    const  params  = useParams(); // Extracts "abc123-en" or "abc123-vi"  
-    const roomLang = params.roomLang || ""; // Ensure it's always a string
+    //const  params  = useParams(); // Extracts "abc123-en" or "abc123-vi"  
+    //const roomLang = params.roomLang || ""; // Ensure it's always a string
+    const { roomLang } = useParams();  
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const { transcript, listening, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
+  const supportedLanguages = ["en", "hi", "vi"] as const;
+  type Language = (typeof supportedLanguages)[number];
+  
+  // ✅ Allow users to select spoken and target languages separately
+  const [spokenLang, setSpokenLang] = useState<Language>("en");  // ✅ Language spoken by the user
+  const [targetLang, setTargetLang] = useState<Language>("hi");  // ✅ Language for translation output
 
-  // Extract roomId and lang from URL
-  const parts = roomLang.split("-");
-  const roomId = parts.length > 1 ? parts[0] : null;
-  const lang = parts.length > 1 ? parts[1] : null;
-  const targetLang = lang === "en" ? "vi" : "en";
+
+  const languageMap = {
+    en: "en-US",
+    hi: "hi-IN",
+    vi: "vi-VN"
+  };
+
+  
+  
+  const roomId = roomLang ? roomLang.split("-")[0] : null;
   
   useEffect(() => {
 
-    if (!roomId || !lang) return;
+    //if (!roomId || !lang) return;
+    if (!roomLang) return ;
 
     if (socket) {
       console.log("⚠️ WebSocket already exists, not opening a new one.");
@@ -28,8 +41,9 @@ const VoiceInterface = () => {
   }
     //const ws = new WebSocket(`ws://localhost:8000/ws/${roomId}/${lang}`);
     //hardcoding land to keep the link consistent. As roomId is omportant for websocket.
-    console.log(`🛜 Connecting WebSocket to: ws://localhost:8080/ws/${roomId}/vi-en`); // 🔥 Log WebSocket URL
-    const ws = new WebSocket(`ws://localhost:8080/ws/${roomId}/vi-en`);
+    
+    console.log(`🛜 Connecting WebSocket to: ws://localhost:8080/ws/${roomId}/${targetLang}`); // 🔥 Log WebSocket URL
+    const ws = new WebSocket(`ws://localhost:8080/ws/${roomId}/${targetLang}`);
     
 
     ws.onopen=()=>{
@@ -49,9 +63,7 @@ const VoiceInterface = () => {
     ws.onmessage = (event) => {
       console.log("📨 Received from WebSocket:", event.data);
       const utterance = new SpeechSynthesisUtterance(event.data);
-      utterance.lang = targetLang === 'vi' ? 'vi-VN' : 'en-US';
-      const mesage=JSON.parse(event.data)
-      console.log("📨 Processed message: ",mesage)
+      utterance.lang = languageMap[targetLang]; // ✅ Output in the selected target language
       window.speechSynthesis.speak(utterance);
     };
 
@@ -62,12 +74,12 @@ const VoiceInterface = () => {
       }
     }
 
-  }, [roomId, lang ,targetLang]);
+  }, [roomLang, targetLang, socket]);
 
   useEffect(() => {
     if (transcript && socket?.readyState === WebSocket.OPEN) {
-      console.log("🎙️ Sending transcript:", transcript); // 🔥 Log recognized speech
-      socket.send(transcript);
+      console.log(`🎙️ Sending transcript: "${transcript}" (spoken in ${spokenLang}, target: ${targetLang})`);
+      socket.send(JSON.stringify({ text: transcript, sourceLang: spokenLang, targetLang }));
     }
   }, [transcript, socket]);
 
@@ -75,11 +87,36 @@ const VoiceInterface = () => {
     return <div>Browser doesn't support speech recognition</div>;
   }
 
+
+  const getButtonStyle = (selected: boolean) => ({
+    backgroundColor: selected ? "#4CAF50" : "#ddd", // Green for selected, gray for unselected
+    color: selected ? "white" : "black",
+    padding: "10px 20px",
+    margin: "5px",
+    border: "none",
+    cursor: "pointer",
+    borderRadius: "5px",
+    fontSize: "16px",
+  });
+
   return (
     <div>
+      <h2>Choose Languages</h2>
+
+<h3>Spoken Language</h3>
+<button style={getButtonStyle(spokenLang === "en")} onClick={() => setSpokenLang("en")}>English</button>
+<button style={getButtonStyle(spokenLang === "hi")} onClick={() => setSpokenLang("hi")}>Hindi</button>
+<button style={getButtonStyle(spokenLang === "vi")} onClick={() => setSpokenLang("vi")}>Vietnamese</button>
+
+<h3>Target Language</h3>
+<button style={getButtonStyle(targetLang === "en")} onClick={() => setTargetLang("en")}>English</button>
+<button style={getButtonStyle(targetLang === "hi")} onClick={() => setTargetLang("hi")}>Hindi</button>
+<button style={getButtonStyle(targetLang === "vi")} onClick={() => setTargetLang("vi")}>Vietnamese</button>
+
+      
       <p>Microphone: {listening ? 'Listening...' : 'Off'}</p>
       <button 
-       onMouseDown={() => SpeechRecognition.startListening({ language: lang === "en" ? "en-US" : "vi-VN" })}
+       onMouseDown={() => SpeechRecognition.startListening({ language: languageMap[spokenLang] })}
         onMouseUp={SpeechRecognition.stopListening}
       >
         Push to Talk
